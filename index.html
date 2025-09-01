@@ -97,13 +97,39 @@ nav button:hover{border-color:#b9bfd0;background:#f8fafc}
   .cell.given{font-weight:700}
   .note, .cell.selected, .cell.peer, .cell.error { display:none!important; }
 }
+
+/* Responsive adjustments for the Sudoku board */
+@media (max-width: 600px) {
+  :root {
+    --cell: clamp(30px, 8vw, 40px); /* Adjust cell size for smaller screens */
+  }
+
+  .board {
+    grid-template-columns: repeat(9, var(--cell));
+    width: 100%; /* Ensure the board fits within the screen */
+  }
+
+  .cell {
+    font-size: calc(var(--cell) * 0.3); /* Adjust font size for smaller cells */
+  }
+
+  .pad {
+    grid-template-columns: repeat(3, 1fr); /* Ensure keypad remains usable */
+    gap: 8px; /* Reduce gap for smaller screens */
+  }
+
+  .key {
+    padding: 12px 0; /* Adjust padding for smaller keys */
+    font-size: 16px; /* Adjust font size for smaller keys */
+  }
+}
 </style>
 </head>
 <body>
 <canvas id="confetti" class="hidden"></canvas>
 <div class="wrap">
   <header>
-    <h1>Sudoku</h1>
+    <h1>Nine&nbsp;by&nbsp;Nine - Sudoku</h1>
     <nav class="row">
       <button onclick="go('home')">Home</button>
       <button onclick="go('scores')">High Scores</button>
@@ -121,6 +147,7 @@ nav button:hover{border-color:#b9bfd0;background:#f8fafc}
       <button class="btn" onclick="go('info')">Info</button>
     </div>
     <p class="muted" style="margin-top:12px">Fill the grid so each row, column, and 3×3 box contains 1–9.</p>
+    <p class="muted">Keyboard shortcuts when playing: 1–9 to set digits, Backspace/Delete to erase, N to toggle notes, H for a hint, U to undo, Enter to finish if solved. Arrow keys to move selection.</p>
   </section>
 
   <!-- GAME -->
