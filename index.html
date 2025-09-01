@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Nine by Nine</title>
+<style>
+:root{ --bg:#f5f7fb; --card:#ffffff; --text:#0b1220; --muted:#64748b; --accent:#0a84ff; --danger:#d70015; --ok:#34c759; --cell: clamp(40px, 6.2vw, 56px); }
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;min-height:100vh;display:flex;align-items:center;justify-content:center;color:var(--text);background:
+  radial-gradient(1200px 700px at 15% -10%, #e6f0ff 0%, transparent 60%),
+  radial-gradient(1000px 600px at 110% -20%, #eaf3ff 0%, transparent 60%),
+  linear-gradient(180deg,#f7fbff,#eaf2ff 60%,#e6f0ff 100%);}
+.wrap{width:min(980px,94vw);padding:20px}
+header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}
+h1{margin:0;font-size:clamp(20px,3.6vw,34px)}
+nav button{background:#fff;border:1px solid #d4d7de;color:#0b1220;padding:8px 12px;border-radius:10px;cursor:pointer;box-shadow:0 1px 0 rgba(0,0,0,.04)}
+nav button:hover{border-color:#b9bfd0;background:#f8fafc}
+.card{background:#fff;border:1px solid #e6e8ee;border-radius:16px;box-shadow:0 8px 24px rgba(17,24,39,.08);padding:18px}
+.grid{display:grid;gap:14px}
+.home-grid{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+.btn{appearance:none;border:1px solid #cbd5e1;background:#f8fafc;color:var(--text);padding:14px 16px;border-radius:14px;width:100%;font-weight:600;cursor:pointer;transition:background .1s}
+.btn:hover{background:#e0f2fe}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.muted{color:var(--muted);font-size:14px}
+.hidden{display:none!important}
+.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.spacer{flex:1}
+.pill{font-size:12px;color:var(--text);border:1px solid #e2e8f0;padding:5px 8px;border-radius:999px;background:#f1f5f9}
+
+/* Sudoku board */
+.board{
+  display:grid;
+  grid-template-columns:repeat(9,var(--cell));
+  gap:0;
+  width:max-content;
+  margin:0 auto;
+  border:2px solid #cbd5e1;
+  border-radius:12px;
+  overflow:hidden;
+  background:#fff;
+}
+.cell{
+  width:var(--cell);
+  height:var(--cell);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  border:1px solid #e5e7eb;
+  font-weight:600;
+  font-size:calc(var(--cell)*0.36);
+  cursor:pointer;
+  position:relative;
+}
+/* thick 3×3 borders */
+.row-0 .cell, .row-3 .cell, .row-6 .cell { border-top-width:2px; }
+.row-8 .cell { border-bottom-width:2px; }
+.cell:nth-child(3n+1) { border-left-width:2px; }
+.cell:nth-child(3n)   { border-right-width:2px; }
+
+/* states */
+.cell.given{background:#f8fafc;color:#334155}
+.cell.selected{outline:2px solid #93c5fd;z-index:1}
+.cell.peer{background:#f1f5f9}
+.cell.error{background:#fee2e2}
+.note{position:absolute;inset:2px;display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:1fr;gap:2px;font-size:10px;color:#94a3b8}
+.note div{display:flex;align-items:center;justify-content:center}
+
+/* keypad */
+.pad{display:grid;grid-template-columns:repeat(3,minmax(64px,1fr));gap:10px;margin-top:12px}
+.key{border:1px solid #d4d7de;background:#fff;border-radius:14px;padding:16px 0;font-size:18px;font-weight:700;box-shadow:0 1px 0 rgba(0,0,0,.04);cursor:pointer;text-align:center}
+.key.primary{background:#0a84ff;color:#fff;border-color:#0a84ff}
+.key.danger{background:#ff3b30;color:#fff;border-color:#ff3b30}
+
+/* confetti */
+#confetti{position:fixed;inset:0;pointer-events:none}
+@media (prefers-reduced-motion:reduce){#confetti{display:none!important}}
+
+/* ---- Print layout ---- */
+@media print {
+  @page { margin:0.5in; }
+  body { background:#fff !important; }
+  header nav, .btn, .pad, .pill, #scores, #settings, #results, #info, .muted, #confetti { display:none!important; }
+
+  #home, #game { display:block!important; }
+  h1 { margin:0 0 12px 0; font-size:20pt; color:#000; }
+  .card { border:none; box-shadow:none; padding:0; }
+  #boardWrap { margin:0 auto!important; }
+
+  :root { --cell:48pt; }
+  .board { grid-template-columns:repeat(9,var(--cell))!important; width:max-content; margin:0 auto; border:2pt solid #000; border-radius:0; overflow:visible; }
+  .cell { width:var(--cell); height:var(--cell); border:0.5pt solid #000; font-size:16pt; color:#000; background:#fff!important; }
+  .row-0 .cell, .row-3 .cell, .row-6 .cell { border-top-width:2pt; }
+  .row-8 .cell { border-bottom-width:2pt; }
+  .cell:nth-child(3n+1) { border-left-width:2pt; }
+  .cell:nth-child(3n)   { border-right-width:2pt; }
+  .cell.given{font-weight:700}
+  .note, .cell.selected, .cell.peer, .cell.error { display:none!important; }
+}
+</style>
+</head>
+<body>
+<canvas id="confetti" class="hidden"></canvas>
+<div class="wrap">
+  <header>
+    <h1>Sudoku</h1>
+    <nav class="row">
+      <button onclick="go('home')">Home</button>
+      <button onclick="go('scores')">High Scores</button>
+      <button onclick="go('settings')">Settings</button>
+      <button onclick="go('info')">Info</button>
+    </nav>
+  </header>
+
+  <!-- HOME -->
+  <section id="home" class="card">
+    <div class="grid home-grid">
+      <button class="btn primary" onclick="startNewGame()">New Game</button>
+      <button class="btn" onclick="go('settings')">Settings</button>
+      <button class="btn" onclick="go('scores')">High Scores</button>
+      <button class="btn" onclick="go('info')">Info</button>
+    </div>
+    <p class="muted" style="margin-top:12px">Fill the grid so each row, column, and 3×3 box contains 1–9.</p>
+  </section>
+
+  <!-- GAME -->
+  <section id="game" class="card hidden">
+    <div class="row" style="justify-content:space-between;margin-bottom:12px">
+      <div class="row">
+        <div class="pill" id="timer">00:00</div>
+        <div class="pill" id="status">notes off</div>
+      </div>
+      <div class="row">
+        <button class="btn" onclick="checkBoard()">Check</button>
+        <button class="btn" onclick="startNewGame()">Restart</button>
+      </div>
+    </div>
+    <div id="boardWrap" class="board"></div>
+    <div class="pad" id="numpad">
+        <button class="key" onclick="setDigit(7)">7</button>
+        <button class="key" onclick="setDigit(8)">8</button>
+        <button class="key" onclick="setDigit(9)">9</button>
+        <button class="key" onclick="setDigit(4)">4</button>
+        <button class="key" onclick="setDigit(5)">5</button>
+        <button class="key" onclick="setDigit(6)">6</button>
+        <button class="key" onclick="setDigit(1)">1</button>
+        <button class="key" onclick="setDigit(2)">2</button>
+        <button class="key" onclick="setDigit(3)">3</button>
+        <button class="key" onclick="toggleNotes()">✎</button>
+        <button class="key danger" onclick="eraseCell()">⌫</button>
+        <button class="key primary" onclick="finishIfSolved()">Done</button>
+    </div>
+  </section>
+
+  <!-- RESULTS -->
+  <section id="results" class="card hidden">
+    <h2>Completed</h2>
+    <p class="muted" id="summary">You finished …</p>
+    <div class="row" style="margin-top:10px;">
+      <button class="btn primary" onclick="startNewGame()">New Game</button>
+      <span class="spacer"></span>
+      <button class="btn" onclick="go('scores')">High Scores</button>
+      <button class="btn" onclick="go('home')">Home</button>
+    </div>
+  </section>
+
+  <!-- SCORES -->
+  <section id="scores" class="card hidden">
+    <div class="row" style="margin-bottom:8px;">
+      <h2 style="margin:0;">High Scores</h2>
+      <span class="spacer"></span>
+      <button class="btn" onclick="clearScores()">Clear All</button>
+    </div>
+    <table id="scoreTable">
+      <thead><tr><th>Date</th><th>Difficulty</th><th>Time</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <p class="muted" style="margin-top:10px;">Stored locally in your browser.</p>
+  </section>
+
+  <!-- SETTINGS -->
+  <section id="settings" class="card hidden">
+    <h2 style="margin-top:0;">Settings</h2>
+    <div class="row" style="margin:10px 0 16px;">
+      <label><input type="radio" name="diff" value="easy" checked> Easy</label>
+      <label><input type="radio" name="diff" value="medium" style="margin-left:14px"> Medium</label>
+      <label><input type="radio" name="diff" value="hard" style="margin-left:14px"> Hard</label>
+    </div>
+    <label class="row" style="margin:10px 0;">
+      <input id="timedToggle" type="checkbox" checked> Timed play
+    </label>
+    <button class="btn primary" onclick="saveSettings()">Save</button>
+  </section>
+
+  <!-- INFO -->
+  <section id="info" class="card hidden">
+    <h2 style="margin-top:0;">Info</h2>
+    <p>This is a small Sudoku built with no libraries. Puzzles are generated by shuffling a solved base grid and removing cells based on difficulty. No server. Your times save locally.</p>
+  </section>
+</div>
+
+<script>
+// ---------- State ----------
+let settings = {
+  diff: localStorage.getItem('sdk_diff') || 'easy',
+  timed: JSON.parse(localStorage.getItem('sdk_timed') ?? 'true')
+};
+let game = null; // {grid:[[]],sol:[[]],given:Set,notes:Map,key:(r,c),start:number|null,history:[]}
+let timerId = null;
+
+// ---------- Utils ----------
+const $ = s => document.querySelector(s);
+const el = (t,p={}) => Object.assign(document.createElement(t), p);
+const shuffle = a => { for(let i=a.length-1;i>0;i--){ const j=(Math.random()*(i+1))|0; [a[i],a[j]]=[a[j],a[i]];} return a; };
+const fmtTime = ms => { const s=(ms/1000)|0, m=(s/60)|0; return `${String(m).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`; };
+
+function go(view){
+  for (const id of ['home','game','results','scores','settings','info']){
+    const s = document.getElementById(id); s.classList.toggle('hidden', id!==view);
+  }
+  if (view==='scores') renderScores();
+}
+function saveSettings(){
+  const chosen = document.querySelector('input[name="diff"]:checked').value;
+  settings.diff = chosen; settings.timed = $('#timedToggle').checked;
+  localStorage.setItem('sdk_diff', chosen);
+  localStorage.setItem('sdk_timed', JSON.stringify(settings.timed));
+  go('home');
+}
+// Move selection with arrows; set digits 1–9; Backspace/Delete erase; N notes; H hint; U undo; Enter done.
+document.addEventListener('keydown', (e) => {
+  if (!game) return;
+  const [r,c] = game.key || [0,0];
+  const k = e.key;
+
+  // digits
+  if (/^[1-9]$/.test(k)) { setDigit(Number(k)); e.preventDefault(); return; }
+
+  // erase
+  if (k === 'Backspace' || k === 'Delete') { eraseCell(); e.preventDefault(); return; }
+
+  // notes/hint/undo/done
+  if (k === 'n' || k === 'N') { toggleNotes(); e.preventDefault(); return; }
+  if (k === 'h' || k === 'H') { hint(); e.preventDefault(); return; }
+  if (k === 'u' || k === 'U') { undo(); e.preventDefault(); return; }
+  if (k === 'Enter') { finishIfSolved(); e.preventDefault(); return; }
+
+  // arrows to move selection
+  if (k === 'ArrowUp'   && r > 0) { selectCell(r-1, c); e.preventDefault(); return; }
+  if (k === 'ArrowDown' && r < 8) { selectCell(r+1, c); e.preventDefault(); return; }
+  if (k === 'ArrowLeft' && c > 0) { selectCell(r, c-1); e.preventDefault(); return; }
+  if (k === 'ArrowRight'&& c < 8) { selectCell(r, c+1); e.preventDefault(); return; }
+});
+
+// ---------- Sudoku generation ----------
+// Base pattern solution. Then apply random row/col/group shuffles.
+function baseSolution(){
+  const rows = []; for(let r=0;r<9;r++){ const row=[]; for(let c=0;c<9;c++){ row.push((r*3 + Math.floor(r/3) + c)%9 + 1); } rows.push(row); }
+  return rows;
+}
+function randomPermute(sol){
+  sol = sol.map(r=>r.slice());
+  const swap = (arr,i,j)=>{ [arr[i],arr[j]]=[arr[j],arr[i]] };
+  // shuffle rows within each band
+  for(let b=0;b<3;b++){ const idx=[0,1,2].map(i=>i+3*b); shuffle(idx); const copy=idx.map(i=>sol[i]); for(let i=0;i<3;i++) sol[i+3*b]=copy[i]; }
+  // shuffle row bands
+  { const bands=[0,1,2]; shuffle(bands); const copy=bands.flatMap(b=>sol.slice(b*3,b*3+3)); for(let i=0;i<9;i++) sol[i]=copy[i]; }
+  // transpose to treat columns similarly
+  let t = Array.from({length:9}, (_,r)=>Array.from({length:9},(_,c)=>sol[c][r]));
+  // shuffle cols within stacks
+  for(let s=0;s<3;s++){ const idx=[0,1,2].map(i=>i+3*s); shuffle(idx); const copy=idx.map(i=>t[i]); for(let i=0;i<3;i++) t[i+3*s]=copy[i]; }
+  // shuffle stacks
+  { const stacks=[0,1,2]; shuffle(stacks); const copy=stacks.flatMap(s=>t.slice(s*3,s*3+3)); for(let i=0;i<9;i++) t[i]=copy[i]; }
+  // transpose back
+  sol = Array.from({length:9}, (_,r)=>Array.from({length:9},(_,c)=>t[c][r]));
+  return sol;
+}
+function makePuzzle(sol, diff){
+  // clone solution then remove cells
+  const grid = sol.map(r=>r.slice());
+  const removals = diff==='easy'? 2 : diff==='medium'? 50 : 58; // numbers to remove out of 81
+  const cells = Array.from({length:81}, (_,i)=>i); shuffle(cells);
+  for(let k=0;k<removals && k<cells.length; k++){
+    const i=cells[k], r=(i/9)|0, c=i%9; grid[r][c]=0;
+  }
+  return grid;
+}
+
+// ---------- Game ----------
+function startNewGame(){
+  const sol = randomPermute(baseSolution());
+  const grid = makePuzzle(sol, settings.diff);
+  const given = new Set();
+  for(let r=0;r<9;r++) for(let c=0;c<9;c++) if (grid[r][c]!==0) given.add(r+","+c);
+  game = { grid, sol, given, notes:new Map(), key:[0,0], start: settings.timed? performance.now(): null, history:[] };
+  $('#timer').parentElement.style.display = settings.timed ? '' : 'none';
+  $('#timer').textContent = settings.timed ? '00:00' : '';
+  $('#status').textContent = 'notes off';
+  renderBoard();
+  go('game');
+  startTimer();
+}
+
+function startTimer(){ stopTimer(); if (!settings.timed) return; timerId = setInterval(()=>{ const elapsed = performance.now() - game.start; $('#timer').textContent = fmtTime(elapsed); }, 200); }
+function stopTimer(){ if (timerId){ clearInterval(timerId); timerId=null; } }
+
+function renderBoard(){
+  const wrap = $('#boardWrap'); wrap.innerHTML='';
+  for(let r=0;r<9;r++){
+    const rowWrap = el('div',{className:`row-${r}`});
+    for(let c=0;c<9;c++){
+      const v = game.grid[r][c];
+      const cell = el('div',{className:'cell'+(game.given.has(r+","+c)?' given':''), onclick:()=>selectCell(r,c)});
+      cell.dataset.r=r; cell.dataset.c=c;
+      if (v!==0) cell.textContent = v;
+      else cell.append(makeNotes(r,c));
+      wrap.appendChild(cell);
+    }
+  }
+}
+function makeNotes(r,c){
+  const key=r+","+c; const wrap=el('div',{className:'note'});
+  const set = game.notes.get(key) || new Set();
+  for(let n=1;n<=9;n++){ const d = el('div',{textContent:set.has(n)?n:''}); wrap.appendChild(d); }
+  return wrap;
+}
+function selectCell(r,c){
+  game.key=[r,c];
+  document.querySelectorAll('.cell').forEach(e=>e.classList.remove('selected','peer','error'));
+  const idx = r*9+c; const cells = [...document.querySelectorAll('.cell')];
+  cells[idx].classList.add('selected');
+  // peers: same row, col, box
+  for(let i=0;i<9;i++){ cells[r*9+i].classList.add('peer'); cells[i*9+c].classList.add('peer'); }
+  const br=Math.floor(r/3)*3, bc=Math.floor(c/3)*3; for(let rr=br;rr<br+3;rr++) for(let cc=bc;cc<bc+3;cc++) cells[rr*9+cc].classList.add('peer');
+}
+
+let notesMode=false;
+function toggleNotes(){ notesMode=!notesMode; $('#status').textContent = notesMode? 'notes on':'notes off'; }
+
+function setDigit(n){ if (!game) return; const [r,c]=game.key; if (game.given.has(r+","+c)) return; pushHistory();
+  if (notesMode){ const k=r+","+c; const set = game.notes.get(k)||new Set(); if (set.has(n)) set.delete(n); else set.add(n); game.notes.set(k,set); }
+  else { game.grid[r][c]=n; game.notes.delete(r+","+c); }
+  updateCell(r,c); checkConflicts(r,c); }
+
+function eraseCell(){ if (!game) return; const [r,c]=game.key; if (game.given.has(r+","+c)) return; pushHistory(); game.grid[r][c]=0; game.notes.delete(r+","+c); updateCell(r,c); }
+
+function updateCell(r,c){
+  const idx=r*9+c; const cell = document.querySelectorAll('.cell')[idx];
+  cell.classList.remove('error'); cell.textContent=''; cell.innerHTML='';
+  const v = game.grid[r][c];
+  if (v!==0) cell.textContent=v; else cell.append(makeNotes(r,c));
+}
+
+function rowValues(r){ return game.grid[r]; }
+function colValues(c){ return game.grid.map(row=>row[c]); }
+function boxValues(r,c){ const br=Math.floor(r/3)*3, bc=Math.floor(c/3)*3; const vals=[]; for(let rr=br;rr<br+3;rr++) for(let cc=bc;cc<bc+3;cc++) vals.push(game.grid[rr][cc]); return vals; }
+
+function checkConflicts(r,c){
+  document.querySelectorAll('.cell').forEach(e=>e.classList.remove('error'));
+  for(let rr=0;rr<9;rr++) for(let cc=0;cc<9;cc++){
+    const v=game.grid[rr][cc]; if (v===0) continue;
+    const dRow=rowValues(rr).filter(x=>x===v).length>1;
+    const dCol=colValues(cc).filter(x=>x===v).length>1;
+    const dBox=boxValues(rr,cc).filter(x=>x===v).length>1;
+    if (dRow||dCol||dBox){ document.querySelectorAll('.cell')[rr*9+cc].classList.add('error'); }
+  }
+}
+function checkBoard(){ checkConflicts(0,0); }
+
+function isSolved(){ for(let r=0;r<9;r++) for(let c=0;c<9;c++) if (game.grid[r][c]!==game.sol[r][c]) return false; return true; }
+function finishIfSolved(){ if (!isSolved()) return alert('Not solved yet'); endGame(); }
+
+// Undo
+function pushHistory(){ game.history.push(JSON.stringify({grid:game.grid,notes:[...game.notes.entries()]})); if (game.history.length>100) game.history.shift(); }
+function undo(){ const s=game.history.pop(); if(!s) return; const state=JSON.parse(s); game.grid=state.grid.map(r=>r.map(v=>v)); game.notes=new Map(state.notes); renderBoard(); }
+
+// ---------- Scores ----------
+function endGame(){
+  stopTimer();
+  const elapsed = settings.timed ? (performance.now()-game.start) : null;
+  const timeStr = settings.timed ? fmtTime(elapsed) : 'untimed';
+  $('#summary').textContent = `Difficulty: ${settings.diff} · Time: ${timeStr}`;
+  saveScore({ date:new Date().toISOString(), diff:settings.diff, ms: settings.timed? Math.round(elapsed): null });
+  if (settings.timed && elapsed<180000) confettiBurst();
+  go('results');
+}
+function loadScores(){ try{return JSON.parse(localStorage.getItem('sdk_scores')||'[]')}catch{return[]} }
+function saveScore(rec){ const arr=loadScores(); arr.unshift(rec); localStorage.setItem('sdk_scores', JSON.stringify(arr.slice(0,100))); }
+function clearScores(){ localStorage.removeItem('sdk_scores'); renderScores(); }
+function renderScores(){
+  const tbody = document.querySelector('#scoreTable tbody'); tbody.innerHTML='';
+  const rows = loadScores(); if(!rows.length){ const tr=el('tr'); tr.append(el('td',{colSpan:3,textContent:'No scores yet.'})); tbody.append(tr); return; }
+  rows.forEach(r=>{
+    const tr=el('tr'); const d=new Date(r.date);
+    tr.append(
+      el('td',{textContent:d.toLocaleDateString()}),
+      el('td',{textContent:r.diff}),
+      el('td',{textContent: r.ms==null? 'untimed' : fmtTime(r.ms)})
+    ); tbody.append(tr);
+  });
+}
+
+// ---------- Confetti ----------
+function confettiBurst({count=120, spread=60, y=0.35}={}){
+  const cv=document.getElementById('confetti'); if(!cv) return; const dpr=window.devicePixelRatio||1; const w=cv.width=innerWidth*dpr; const h=cv.height=innerHeight*dpr; cv.style.width=innerWidth+'px'; cv.style.height=innerHeight+'px'; const ctx=cv.getContext('2d'); ctx.scale(dpr,dpr); cv.classList.remove('hidden'); const colors=['#0a84ff','#34c759','#ff9f0a','#ff375f','#af52de','#64d2ff']; const rand=(a,b)=>a+Math.random()*(b-a); const rad=m=>m*Math.PI/180; const parts=Array.from({length:count},()=>{ const angle=rad(90+rand(-spread/2,spread/2)); const speed=rand(3,7); return{ x:innerWidth/2, y:innerHeight*y, vx:Math.cos(angle)*speed, vy:-Math.sin(angle)*speed - rand(2,5), g:0.12, w:rand(6,10), h:rand(8,14), rot:rand(0,2*Math.PI), vr:rand(-0.2,0.2), color:colors[(Math.random()*colors.length)|0], life:rand(1.2,2.0), t:0 }; }); let prev=performance.now(); function frame(now){ const dt=Math.min(0.033,(now-prev)/1000); prev=now; ctx.clearRect(0,0,innerWidth,innerHeight); let alive=false; for(const p of parts){ p.t+=dt; if(p.t>p.life) continue; alive=true; p.vy+=p.g; p.x+=p.vx*6*dt; p.y+=p.vy*6*dt; p.rot+=p.vr; ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rot); ctx.fillStyle=p.color; ctx.globalAlpha=1-(p.t/p.life); ctx.fillRect(-p.w/2,-p.h/2,p.w,p.h); ctx.restore(); } if(alive) requestAnimationFrame(frame); else cv.classList.add('hidden'); } requestAnimationFrame(frame); }
+
+// ---------- Init ----------
+(function(){
+  document.querySelectorAll('input[name="diff"]').forEach(r=> r.checked = (r.value===settings.diff));
+  $('#timedToggle').checked = !!settings.timed;
+  renderScores();
+})();
+</script>
+</body>
+</html>
