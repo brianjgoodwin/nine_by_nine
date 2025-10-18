@@ -5,7 +5,21 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Nine by Nine</title>
 <style>
-:root{ --bg:#f5f7fb; --card:#ffffff; --text:#0b1220; --muted:#64748b; --accent:#0a84ff; --danger:#d70015; --ok:#34c759; --cell: clamp(40px, 6.2vw, 56px); }
+:root{
+  --bg:#f5f7fb; --card:#ffffff; --text:#0b1220; --muted:#64748b; --accent:#0a84ff; --danger:#d70015; --ok:#34c759; --cell: clamp(40px, 6.2vw, 56px);
+  --given-bg:#f8fafc; --given-text:#334155; --selected:#93c5fd; --peer-bg:#f1f5f9; --error-bg:#fee2e2; --border:#e5e7eb; --border-thick:#cbd5e1;
+}
+/* High contrast mode */
+body.high-contrast {
+  --bg:#000000; --card:#1a1a1a; --text:#ffffff; --muted:#b0b0b0; --accent:#4da6ff; --danger:#ff4d4d; --ok:#00ff00;
+  --given-bg:#2a2a2a; --given-text:#ffffff; --selected:#0066cc; --peer-bg:#333333; --error-bg:#4d0000; --border:#444444; --border-thick:#666666;
+}
+body.high-contrast .board { border-color: var(--border-thick); }
+body.high-contrast .cell { border-color: var(--border); }
+body.high-contrast .cell.given { background: var(--given-bg); color: var(--given-text); }
+body.high-contrast .cell.selected { outline-color: var(--selected); }
+body.high-contrast .cell.peer { background: var(--peer-bg); }
+body.high-contrast .cell.error { background: var(--error-bg); color: #ffffff; }
 *{box-sizing:border-box}
 body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;min-height:100vh;display:flex;align-items:center;justify-content:center;color:var(--text);background:
   radial-gradient(1200px 700px at 15% -10%, #e6f0ff 0%, transparent 60%),
@@ -39,6 +53,12 @@ nav button:hover{border-color:#b9bfd0;background:#f8fafc}
   border-radius:12px;
   overflow:hidden;
   background:#fff;
+  transition:filter 0.3s ease;
+}
+.board.paused{
+  filter:blur(8px);
+  pointer-events:none;
+  user-select:none;
 }
 .cell{
   width:var(--cell);
@@ -51,6 +71,15 @@ nav button:hover{border-color:#b9bfd0;background:#f8fafc}
   font-size:calc(var(--cell)*0.36);
   cursor:pointer;
   position:relative;
+  transition:background 0.15s ease, transform 0.1s ease;
+}
+.cell.placed{
+  animation:cellPop 0.2s ease;
+}
+@keyframes cellPop{
+  0%{transform:scale(1)}
+  50%{transform:scale(1.15)}
+  100%{transform:scale(1)}
 }
 /* thick 3×3 borders */
 .row-0 .cell, .row-3 .cell, .row-6 .cell { border-top-width:2px; }
@@ -101,7 +130,7 @@ nav button:hover{border-color:#b9bfd0;background:#f8fafc}
 /* Responsive adjustments for the Sudoku board */
 @media (max-width: 600px) {
   :root {
-    --cell: clamp(30px, 8vw, 40px); /* Adjust cell size for smaller screens */
+    --cell: clamp(35px, 9vw, 45px); /* Increased minimum cell size for better touch targets */
   }
 
   .board {
@@ -110,17 +139,37 @@ nav button:hover{border-color:#b9bfd0;background:#f8fafc}
   }
 
   .cell {
-    font-size: calc(var(--cell) * 0.3); /* Adjust font size for smaller cells */
+    font-size: calc(var(--cell) * 0.32); /* Adjust font size for readability */
+  }
+
+  .btn {
+    padding: 16px 18px; /* Larger touch targets for buttons */
+    font-size: 15px;
+  }
+
+  .row {
+    gap: 8px; /* Tighter spacing on mobile */
   }
 
   .pad {
     grid-template-columns: repeat(3, 1fr); /* Ensure keypad remains usable */
-    gap: 8px; /* Reduce gap for smaller screens */
+    gap: 10px;
   }
 
   .key {
-    padding: 12px 0; /* Adjust padding for smaller keys */
-    font-size: 16px; /* Adjust font size for smaller keys */
+    padding: 18px 0; /* Larger touch targets for keypad */
+    font-size: 18px;
+  }
+
+  nav button {
+    padding: 10px 14px; /* Larger header nav buttons */
+  }
+}
+
+/* Hide keypad on desktop */
+@media (min-width: 1024px) {
+  .pad {
+    display: none; /* Hide the keypad on larger screens */
   }
 }
 </style>
@@ -142,12 +191,14 @@ nav button:hover{border-color:#b9bfd0;background:#f8fafc}
   <section id="home" class="card">
     <div class="grid home-grid">
       <button class="btn primary" onclick="startNewGame()">New Game</button>
+      <button class="btn" id="resumeBtn" onclick="resumeSavedGame()" style="display:none">Resume Game</button>
       <button class="btn" onclick="go('settings')">Settings</button>
       <button class="btn" onclick="go('scores')">High Scores</button>
+      <button class="btn" onclick="go('stats')">Stats</button>
       <button class="btn" onclick="go('info')">Info</button>
     </div>
     <p class="muted" style="margin-top:12px">Fill the grid so each row, column, and 3×3 box contains 1–9.</p>
-    <p class="muted">Keyboard shortcuts when playing: 1–9 to set digits, Backspace/Delete to erase, N to toggle notes, H for a hint, U to undo, Enter to finish if solved. Arrow keys to move selection.</p>
+    <p class="muted">Keyboard shortcuts when playing: 1–9 to set digits, Backspace/Delete to erase, N to toggle notes, H for a hint, U to undo, P to pause. Arrow keys to move selection.</p>
   </section>
 
   <!-- GAME -->
@@ -159,7 +210,9 @@ nav button:hover{border-color:#b9bfd0;background:#f8fafc}
       </div>
       <div class="row">
         <button class="btn" onclick="checkBoard()">Check</button>
-        <button class="btn" onclick="startNewGame()">Restart</button>
+        <button class="btn" id="pauseBtn" onclick="togglePause()">Pause</button>
+        <button class="btn" onclick="restartPuzzle()">Restart</button>
+        <button class="btn" onclick="startNewGame()">New Puzzle</button>
       </div>
     </div>
     <div id="boardWrap" class="board"></div>
@@ -175,7 +228,6 @@ nav button:hover{border-color:#b9bfd0;background:#f8fafc}
         <button class="key" onclick="setDigit(3)">3</button>
         <button class="key" onclick="toggleNotes()">✎</button>
         <button class="key danger" onclick="eraseCell()">⌫</button>
-        <button class="key primary" onclick="finishIfSolved()">Done</button>
     </div>
   </section>
 
@@ -216,7 +268,16 @@ nav button:hover{border-color:#b9bfd0;background:#f8fafc}
     <label class="row" style="margin:10px 0;">
       <input id="timedToggle" type="checkbox" checked> Timed play
     </label>
+    <label class="row" style="margin:10px 0;">
+      <input id="highContrastToggle" type="checkbox"> High contrast mode
+    </label>
     <button class="btn primary" onclick="saveSettings()">Save</button>
+  </section>
+
+  <!-- STATS -->
+  <section id="stats" class="card hidden">
+    <h2 style="margin-top:0;">Statistics</h2>
+    <p class="muted">Stats coming soon</p>
   </section>
 
   <!-- INFO -->
@@ -228,12 +289,67 @@ nav button:hover{border-color:#b9bfd0;background:#f8fafc}
 
 <script>
 // ---------- State ----------
-let settings = {
-  diff: localStorage.getItem('sdk_diff') || 'easy',
-  timed: JSON.parse(localStorage.getItem('sdk_timed') ?? 'true')
+// Safe localStorage wrapper with error handling
+const storage = {
+  get(key, defaultValue = null) {
+    try {
+      return localStorage.getItem(key) ?? defaultValue;
+    } catch (e) {
+      console.warn('localStorage.getItem failed:', e);
+      return defaultValue;
+    }
+  },
+  set(key, value) {
+    try {
+      localStorage.setItem(key, value);
+      return true;
+    } catch (e) {
+      console.warn('localStorage.setItem failed:', e);
+      this.showError('Unable to save data. Your browser storage may be full or disabled.');
+      return false;
+    }
+  },
+  remove(key) {
+    try {
+      localStorage.removeItem(key);
+      return true;
+    } catch (e) {
+      console.warn('localStorage.removeItem failed:', e);
+      return false;
+    }
+  },
+  showError(message) {
+    const msg = document.createElement('div');
+    msg.textContent = message;
+    msg.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#ff3b30;color:#fff;padding:12px 20px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.15);z-index:1000;font-weight:600;max-width:90%;text-align:center;';
+    document.body.appendChild(msg);
+    setTimeout(() => msg.remove(), 4000);
+  }
 };
-let game = null; // {grid:[[]],sol:[[]],given:Set,notes:Map,key:(r,c),start:number|null,history:[]}
+
+let settings = {
+  diff: storage.get('sdk_diff', 'easy'),
+  timed: JSON.parse(storage.get('sdk_timed', 'true')),
+  highContrast: JSON.parse(storage.get('sdk_highContrast', 'false'))
+};
+let game = null; // {grid:[[]],sol:[[]],given:Set,notes:Map,key:(r,c),start:number|null,history:[],puzzle:[[]],paused:false}
 let timerId = null;
+
+// Apply high contrast mode based on settings or system preference
+function applyHighContrast(){
+  const systemPref = window.matchMedia && window.matchMedia('(prefers-contrast: more)').matches;
+  const shouldUseHighContrast = settings.highContrast || systemPref;
+  document.body.classList.toggle('high-contrast', shouldUseHighContrast);
+}
+
+// Listen for system preference changes
+if (window.matchMedia) {
+  window.matchMedia('(prefers-contrast: more)').addEventListener('change', (e) => {
+    if (!settings.highContrast) { // Only auto-apply if user hasn't manually set it
+      applyHighContrast();
+    }
+  });
+}
 
 // ---------- Utils ----------
 const $ = s => document.querySelector(s);
@@ -242,23 +358,41 @@ const shuffle = a => { for(let i=a.length-1;i>0;i--){ const j=(Math.random()*(i+
 const fmtTime = ms => { const s=(ms/1000)|0, m=(s/60)|0; return `${String(m).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`; };
 
 function go(view){
-  for (const id of ['home','game','results','scores','settings','info']){
+  for (const id of ['home','game','results','scores','settings','info','stats']){
     const s = document.getElementById(id); s.classList.toggle('hidden', id!==view);
   }
   if (view==='scores') renderScores();
+  if (view==='home') updateResumeButton();
+}
+
+function updateResumeButton(){
+  const hasSaved = loadGameState() !== null;
+  const btn = $('#resumeBtn');
+  btn.style.display = hasSaved ? '' : 'none';
 }
 function saveSettings(){
   const chosen = document.querySelector('input[name="diff"]:checked').value;
-  settings.diff = chosen; settings.timed = $('#timedToggle').checked;
-  localStorage.setItem('sdk_diff', chosen);
-  localStorage.setItem('sdk_timed', JSON.stringify(settings.timed));
+  settings.diff = chosen;
+  settings.timed = $('#timedToggle').checked;
+  settings.highContrast = $('#highContrastToggle').checked;
+  storage.set('sdk_diff', chosen);
+  storage.set('sdk_timed', JSON.stringify(settings.timed));
+  storage.set('sdk_highContrast', JSON.stringify(settings.highContrast));
+  applyHighContrast();
   go('home');
 }
-// Move selection with arrows; set digits 1–9; Backspace/Delete erase; N notes; H hint; U undo; Enter done.
+// Move selection with arrows; set digits 1–9; Backspace/Delete erase; N notes; H hint; U undo; P pause.
 document.addEventListener('keydown', (e) => {
   if (!game) return;
-  const [r,c] = game.key || [0,0];
   const k = e.key;
+
+  // Allow pause even when paused
+  if (k === 'p' || k === 'P') { togglePause(); e.preventDefault(); return; }
+
+  // Block all other input when paused
+  if (game.paused) return;
+
+  const [r,c] = game.key || [0,0];
 
   // digits
   if (/^[1-9]$/.test(k)) { setDigit(Number(k)); e.preventDefault(); return; }
@@ -266,11 +400,10 @@ document.addEventListener('keydown', (e) => {
   // erase
   if (k === 'Backspace' || k === 'Delete') { eraseCell(); e.preventDefault(); return; }
 
-  // notes/hint/undo/done
+  // notes/hint/undo
   if (k === 'n' || k === 'N') { toggleNotes(); e.preventDefault(); return; }
-  if (k === 'h' || k === 'H') { hint(); e.preventDefault(); return; }
+  if (k === 'h' || k === 'H') { hint(e.shiftKey); e.preventDefault(); return; }
   if (k === 'u' || k === 'U') { undo(); e.preventDefault(); return; }
-  if (k === 'Enter') { finishIfSolved(); e.preventDefault(); return; }
 
   // arrows to move selection
   if (k === 'ArrowUp'   && r > 0) { selectCell(r-1, c); e.preventDefault(); return; }
@@ -280,6 +413,58 @@ document.addEventListener('keydown', (e) => {
 });
 
 // ---------- Sudoku generation ----------
+// Solver: checks if a number is valid at position
+function isValidMove(grid, row, col, num){
+  // Check row
+  for(let c=0;c<9;c++) if(grid[row][c]===num) return false;
+  // Check column
+  for(let r=0;r<9;r++) if(grid[r][col]===num) return false;
+  // Check 3x3 box
+  const boxRow=Math.floor(row/3)*3, boxCol=Math.floor(col/3)*3;
+  for(let r=boxRow;r<boxRow+3;r++) for(let c=boxCol;c<boxCol+3;c++) if(grid[r][c]===num) return false;
+  return true;
+}
+
+// Solver: backtracking algorithm to solve or count solutions
+function solveSudoku(grid, countOnly=false, limit=2){
+  let solutionCount = 0;
+
+  function backtrack(){
+    if(countOnly && solutionCount>=limit) return true; // Early exit when counting
+
+    // Find next empty cell
+    for(let r=0;r<9;r++){
+      for(let c=0;c<9;c++){
+        if(grid[r][c]===0){
+          // Try digits 1-9
+          for(let num=1;num<=9;num++){
+            if(isValidMove(grid,r,c,num)){
+              grid[r][c]=num;
+              if(backtrack()) {
+                if(!countOnly) return true; // Found solution, stop
+              }
+              grid[r][c]=0; // Backtrack
+            }
+          }
+          return false; // No valid digit found
+        }
+      }
+    }
+    // No empty cells found - puzzle is solved
+    solutionCount++;
+    return !countOnly; // Continue if counting, stop if solving
+  }
+
+  backtrack();
+  return countOnly ? solutionCount : solutionCount>0;
+}
+
+// Count solutions (returns 0, 1, 2, or more)
+function countSolutions(grid, limit=2){
+  const gridCopy = grid.map(r=>r.slice());
+  return solveSudoku(gridCopy, true, limit);
+}
+
 // Base pattern solution. Then apply random row/col/group shuffles.
 function baseSolution(){
   const rows = []; for(let r=0;r<9;r++){ const row=[]; for(let c=0;c<9;c++){ row.push((r*3 + Math.floor(r/3) + c)%9 + 1); } rows.push(row); }
@@ -305,7 +490,7 @@ function randomPermute(sol){
 function makePuzzle(sol, diff){
   // clone solution then remove cells
   const grid = sol.map(r=>r.slice());
-  const removals = diff==='easy'? 2 : diff==='medium'? 50 : 58; // numbers to remove out of 81
+  const removals = diff==='easy'? 35 : diff==='medium'? 50 : 58; // numbers to remove out of 81
   const cells = Array.from({length:81}, (_,i)=>i); shuffle(cells);
   for(let k=0;k<removals && k<cells.length; k++){
     const i=cells[k], r=(i/9)|0, c=i%9; grid[r][c]=0;
@@ -314,21 +499,135 @@ function makePuzzle(sol, diff){
 }
 
 // ---------- Game ----------
-function startNewGame(){
-  const sol = randomPermute(baseSolution());
-  const grid = makePuzzle(sol, settings.diff);
-  const given = new Set();
-  for(let r=0;r<9;r++) for(let c=0;c<9;c++) if (grid[r][c]!==0) given.add(r+","+c);
-  game = { grid, sol, given, notes:new Map(), key:[0,0], start: settings.timed? performance.now(): null, history:[] };
+function saveGameState(){
+  if(!game) return;
+  const state = {
+    grid: game.grid,
+    sol: game.sol,
+    given: [...game.given],
+    notes: [...game.notes.entries()],
+    key: game.key,
+    start: game.start,
+    history: game.history,
+    puzzle: game.puzzle,
+    paused: game.paused,
+    diff: settings.diff,
+    timed: settings.timed
+  };
+  storage.set('sdk_saved_game', JSON.stringify(state));
+}
+
+function loadGameState(){
+  const saved = storage.get('sdk_saved_game');
+  if(!saved) return null;
+  try {
+    const state = JSON.parse(saved);
+    return {
+      grid: state.grid.map(r=>r.slice()),
+      sol: state.sol.map(r=>r.slice()),
+      given: new Set(state.given),
+      notes: new Map(state.notes),
+      key: state.key,
+      start: state.start,
+      history: state.history,
+      puzzle: state.puzzle.map(r=>r.slice()),
+      paused: state.paused
+    };
+  } catch(e) {
+    console.warn('Failed to load saved game:', e);
+    return null;
+  }
+}
+
+function resumeSavedGame(){
+  const savedGame = loadGameState();
+  if(!savedGame) return;
+
+  game = savedGame;
+  notesMode = false;
   $('#timer').parentElement.style.display = settings.timed ? '' : 'none';
-  $('#timer').textContent = settings.timed ? '00:00' : '';
+  $('#timer').textContent = settings.timed && game.start ? fmtTime(performance.now() - game.start) : '00:00';
   $('#status').textContent = 'notes off';
+  $('#boardWrap').classList.toggle('paused', game.paused);
+  $('#pauseBtn').textContent = game.paused ? 'Resume' : 'Pause';
   renderBoard();
   go('game');
+  if(!game.paused) startTimer();
+}
+
+function clearSavedGame(){
+  storage.remove('sdk_saved_game');
+}
+
+function startNewGame(){
+  let sol, grid, solutionCount;
+  let attempts = 0;
+  const maxAttempts = 50;
+
+  // Generate puzzles until we get one with exactly 1 solution
+  do {
+    sol = randomPermute(baseSolution());
+    grid = makePuzzle(sol, settings.diff);
+    solutionCount = countSolutions(grid);
+    attempts++;
+
+    if(attempts >= maxAttempts) {
+      // Fallback: just use the solution we have (should be rare)
+      console.warn('Could not generate valid puzzle after', maxAttempts, 'attempts. Using last attempt.');
+      break;
+    }
+  } while(solutionCount !== 1);
+
+  if(solutionCount === 1 || attempts >= maxAttempts) {
+    const given = new Set();
+    for(let r=0;r<9;r++) for(let c=0;c<9;c++) if (grid[r][c]!==0) given.add(r+","+c);
+    const puzzle = grid.map(r=>r.slice()); // Save original puzzle for restart
+    game = { grid, sol, given, notes:new Map(), key:[0,0], start: settings.timed? performance.now(): null, history:[], puzzle, paused:false };
+    $('#timer').parentElement.style.display = settings.timed ? '' : 'none';
+    $('#timer').textContent = settings.timed ? '00:00' : '';
+    $('#status').textContent = 'notes off';
+    notesMode = false;
+    renderBoard();
+    go('game');
+    startTimer();
+  }
+}
+
+function restartPuzzle(){
+  if(!game) return;
+  // Reset grid to original puzzle state
+  game.grid = game.puzzle.map(r=>r.slice());
+  game.notes.clear();
+  game.history = [];
+  game.start = settings.timed ? performance.now() : null;
+  game.paused = false;
+  notesMode = false;
+  $('#status').textContent = 'notes off';
+  $('#timer').textContent = settings.timed ? '00:00' : '';
+  $('#boardWrap').classList.remove('paused');
+  $('#pauseBtn').textContent = 'Pause';
+  renderBoard();
   startTimer();
 }
 
-function startTimer(){ stopTimer(); if (!settings.timed) return; timerId = setInterval(()=>{ const elapsed = performance.now() - game.start; $('#timer').textContent = fmtTime(elapsed); }, 200); }
+function togglePause(){
+  if(!game) return;
+  game.paused = !game.paused;
+  const board = $('#boardWrap');
+  const btn = $('#pauseBtn');
+
+  if(game.paused){
+    board.classList.add('paused');
+    btn.textContent = 'Resume';
+    stopTimer();
+  } else {
+    board.classList.remove('paused');
+    btn.textContent = 'Pause';
+    startTimer();
+  }
+}
+
+function startTimer(){ stopTimer(); if (!settings.timed || game.paused) return; timerId = setInterval(()=>{ const elapsed = performance.now() - game.start; $('#timer').textContent = fmtTime(elapsed); }, 200); }
 function stopTimer(){ if (timerId){ clearInterval(timerId); timerId=null; } }
 
 function renderBoard(){
@@ -364,18 +663,56 @@ function selectCell(r,c){
 let notesMode=false;
 function toggleNotes(){ notesMode=!notesMode; $('#status').textContent = notesMode? 'notes on':'notes off'; }
 
-function setDigit(n){ if (!game) return; const [r,c]=game.key; if (game.given.has(r+","+c)) return; pushHistory();
-  if (notesMode){ const k=r+","+c; const set = game.notes.get(k)||new Set(); if (set.has(n)) set.delete(n); else set.add(n); game.notes.set(k,set); }
-  else { game.grid[r][c]=n; game.notes.delete(r+","+c); }
-  updateCell(r,c); checkConflicts(r,c); }
+function setDigit(n){
+  if (!game || game.paused) return;
+  const [r,c]=game.key;
+  if (game.given.has(r+","+c)) return;
+  pushHistory();
+  if (notesMode){
+    const k=r+","+c;
+    const set = game.notes.get(k)||new Set();
+    if (set.has(n)) set.delete(n); else set.add(n);
+    game.notes.set(k,set);
+  } else {
+    game.grid[r][c]=n;
+    game.notes.delete(r+","+c);
+  }
+  updateCell(r,c);
+  checkConflicts(r,c);
+  saveGameState(); // Auto-save after every move
 
-function eraseCell(){ if (!game) return; const [r,c]=game.key; if (game.given.has(r+","+c)) return; pushHistory(); game.grid[r][c]=0; game.notes.delete(r+","+c); updateCell(r,c); }
+  // Auto-check if puzzle is complete
+  if(isSolved()){
+    setTimeout(()=>endGame(), 300); // Small delay for visual feedback
+  }
+}
+
+function eraseCell(){
+  if (!game || game.paused) return;
+  const [r,c]=game.key;
+  if (game.given.has(r+","+c)) return;
+  pushHistory();
+  game.grid[r][c]=0;
+  game.notes.delete(r+","+c);
+  updateCell(r,c);
+  saveGameState(); // Auto-save after every move
+}
 
 function updateCell(r,c){
-  const idx=r*9+c; const cell = document.querySelectorAll('.cell')[idx];
-  cell.classList.remove('error'); cell.textContent=''; cell.innerHTML='';
+  const idx=r*9+c;
+  const cell = document.querySelectorAll('.cell')[idx];
+  cell.classList.remove('error', 'placed');
+  cell.textContent='';
+  cell.innerHTML='';
   const v = game.grid[r][c];
-  if (v!==0) cell.textContent=v; else cell.append(makeNotes(r,c));
+  if (v!==0) {
+    cell.textContent=v;
+    // Add animation
+    void cell.offsetWidth; // Force reflow
+    cell.classList.add('placed');
+  } else {
+    cell.append(makeNotes(r,c));
+  }
 }
 
 function rowValues(r){ return game.grid[r]; }
@@ -384,18 +721,136 @@ function boxValues(r,c){ const br=Math.floor(r/3)*3, bc=Math.floor(c/3)*3; const
 
 function checkConflicts(r,c){
   document.querySelectorAll('.cell').forEach(e=>e.classList.remove('error'));
-  for(let rr=0;rr<9;rr++) for(let cc=0;cc<9;cc++){
-    const v=game.grid[rr][cc]; if (v===0) continue;
-    const dRow=rowValues(rr).filter(x=>x===v).length>1;
-    const dCol=colValues(cc).filter(x=>x===v).length>1;
-    const dBox=boxValues(rr,cc).filter(x=>x===v).length>1;
-    if (dRow||dCol||dBox){ document.querySelectorAll('.cell')[rr*9+cc].classList.add('error'); }
+
+  // Build a map of conflicts: value -> list of cells
+  const conflicts = new Set();
+
+  // Check all cells for conflicts
+  for(let rr=0;rr<9;rr++){
+    for(let cc=0;cc<9;cc++){
+      const v = game.grid[rr][cc];
+      if (v===0) continue;
+
+      // Check row conflicts
+      for(let c2=0;c2<9;c2++){
+        if(c2!==cc && game.grid[rr][c2]===v){
+          conflicts.add(rr*9+cc);
+          conflicts.add(rr*9+c2);
+        }
+      }
+
+      // Check column conflicts
+      for(let r2=0;r2<9;r2++){
+        if(r2!==rr && game.grid[r2][cc]===v){
+          conflicts.add(rr*9+cc);
+          conflicts.add(r2*9+cc);
+        }
+      }
+
+      // Check box conflicts
+      const br=Math.floor(rr/3)*3, bc=Math.floor(cc/3)*3;
+      for(let r2=br;r2<br+3;r2++){
+        for(let c2=bc;c2<bc+3;c2++){
+          if((r2!==rr || c2!==cc) && game.grid[r2][c2]===v){
+            conflicts.add(rr*9+cc);
+            conflicts.add(r2*9+c2);
+          }
+        }
+      }
+    }
   }
+
+  // Apply error class to conflicting cells
+  const cells = document.querySelectorAll('.cell');
+  conflicts.forEach(idx => cells[idx].classList.add('error'));
 }
+
 function checkBoard(){ checkConflicts(0,0); }
 
 function isSolved(){ for(let r=0;r<9;r++) for(let c=0;c<9;c++) if (game.grid[r][c]!==game.sol[r][c]) return false; return true; }
-function finishIfSolved(){ if (!isSolved()) return alert('Not solved yet'); endGame(); }
+
+// Hint: highlight an empty cell that has only one valid candidate
+// Advanced hint (Shift+H): show all candidates for selected cell
+function hint(advanced=false){
+  if(!game) return;
+
+  // Advanced hint: show all candidates for currently selected cell
+  if(advanced){
+    const [r,c] = game.key || [0,0];
+    if(game.grid[r][c]!==0 || game.given.has(r+","+c)){
+      const msg = document.createElement('div');
+      msg.textContent = 'Select an empty cell first';
+      msg.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#ff9f0a;color:#fff;padding:12px 20px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.15);z-index:1000;font-weight:600;';
+      document.body.appendChild(msg);
+      setTimeout(()=>msg.remove(), 2000);
+      return;
+    }
+
+    // Find all valid candidates for this cell
+    const candidates = [];
+    for(let num=1;num<=9;num++){
+      if(isValidMove(game.grid, r, c, num)){
+        candidates.push(num);
+      }
+    }
+
+    if(candidates.length===0){
+      const msg = document.createElement('div');
+      msg.textContent = 'No valid candidates - check for errors!';
+      msg.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#ff3b30;color:#fff;padding:12px 20px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.15);z-index:1000;font-weight:600;';
+      document.body.appendChild(msg);
+      setTimeout(()=>msg.remove(), 2000);
+      return;
+    }
+
+    const msg = document.createElement('div');
+    msg.textContent = `Possible: ${candidates.join(', ')}`;
+    msg.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#0a84ff;color:#fff;padding:12px 20px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.15);z-index:1000;font-weight:600;';
+    document.body.appendChild(msg);
+    setTimeout(()=>msg.remove(), 3000);
+    return;
+  }
+
+  // Regular hint: find cells with exactly one valid candidate
+  const hints = [];
+  for(let r=0;r<9;r++){
+    for(let c=0;c<9;c++){
+      if(game.grid[r][c]===0 && !game.given.has(r+","+c)){
+        // Find all valid candidates for this cell
+        const candidates = [];
+        for(let num=1;num<=9;num++){
+          if(isValidMove(game.grid, r, c, num)){
+            candidates.push(num);
+          }
+        }
+        if(candidates.length===1){
+          hints.push({r, c, num: candidates[0]});
+        }
+      }
+    }
+  }
+
+  if(hints.length===0){
+    // No obvious hints - just show a message
+    const msg = document.createElement('div');
+    msg.textContent = 'No obvious moves found. Keep trying!';
+    msg.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#ff9f0a;color:#fff;padding:12px 20px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.15);z-index:1000;font-weight:600;';
+    document.body.appendChild(msg);
+    setTimeout(()=>msg.remove(), 2000);
+    return;
+  }
+
+  // Select a random hint from available ones
+  const hint = hints[Math.floor(Math.random()*hints.length)];
+  selectCell(hint.r, hint.c);
+
+  // Show visual hint message
+  const msg = document.createElement('div');
+  msg.textContent = `Try ${hint.num} here`;
+  msg.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#34c759;color:#fff;padding:12px 20px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.15);z-index:1000;font-weight:600;';
+  document.body.appendChild(msg);
+  setTimeout(()=>msg.remove(), 2000);
+}
 
 // Undo
 function pushHistory(){ game.history.push(JSON.stringify({grid:game.grid,notes:[...game.notes.entries()]})); if (game.history.length>100) game.history.shift(); }
@@ -408,12 +863,27 @@ function endGame(){
   const timeStr = settings.timed ? fmtTime(elapsed) : 'untimed';
   $('#summary').textContent = `Difficulty: ${settings.diff} · Time: ${timeStr}`;
   saveScore({ date:new Date().toISOString(), diff:settings.diff, ms: settings.timed? Math.round(elapsed): null });
-  if (settings.timed && elapsed<180000) confettiBurst();
+  clearSavedGame(); // Clear saved game when completed
+  confettiBurst();
   go('results');
 }
-function loadScores(){ try{return JSON.parse(localStorage.getItem('sdk_scores')||'[]')}catch{return[]} }
-function saveScore(rec){ const arr=loadScores(); arr.unshift(rec); localStorage.setItem('sdk_scores', JSON.stringify(arr.slice(0,100))); }
-function clearScores(){ localStorage.removeItem('sdk_scores'); renderScores(); }
+function loadScores(){
+  try {
+    const data = storage.get('sdk_scores', '[]');
+    return JSON.parse(data);
+  } catch {
+    return [];
+  }
+}
+function saveScore(rec){
+  const arr = loadScores();
+  arr.unshift(rec);
+  storage.set('sdk_scores', JSON.stringify(arr.slice(0,100)));
+}
+function clearScores(){
+  storage.remove('sdk_scores');
+  renderScores();
+}
 function renderScores(){
   const tbody = document.querySelector('#scoreTable tbody'); tbody.innerHTML='';
   const rows = loadScores(); if(!rows.length){ const tr=el('tr'); tr.append(el('td',{colSpan:3,textContent:'No scores yet.'})); tbody.append(tr); return; }
@@ -435,7 +905,10 @@ function confettiBurst({count=120, spread=60, y=0.35}={}){
 (function(){
   document.querySelectorAll('input[name="diff"]').forEach(r=> r.checked = (r.value===settings.diff));
   $('#timedToggle').checked = !!settings.timed;
+  $('#highContrastToggle').checked = !!settings.highContrast;
+  applyHighContrast(); // Apply high contrast mode on load
   renderScores();
+  updateResumeButton(); // Check for saved game on load
 })();
 </script>
 </body>
